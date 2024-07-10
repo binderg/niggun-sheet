@@ -4,10 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sheet Builder</title>
-    <!-- Include Quill from CDNJS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.6/quill.snow.css">
-    <link rel="stylesheet" href="css/main.css">
+    <title>Custom Text Editor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js">
     <style>
         body {
             display: flex;
@@ -66,41 +64,47 @@
         }
 
         #editor-container {
+            flex: 1;
             display: flex;
             justify-content: center;
             align-items: center;
-            background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
-            position: relative;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #f0f0f0;
+        }
+
+        .page {
             width: calc(100vh * 8.5 / 11);
             height: 100vh;
-            margin: 0 auto;
-            overflow: hidden;
-            background: url('/assets/sheetskin.png') no-repeat center center;
-            background-size: cover;
-        }
-
-        #editor {
-            box-sizing: border-box;
-            height: 100%;
-            width: 100%;
-            padding: 60px;
+            margin: 20px;
+            padding: 1in;
+            background-color: #ffffff;
+            box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
             position: relative;
-            color: black;
-            overflow-y: auto;
+            box-sizing: border-box;
         }
 
-        .ql-editor {
+        .page .content {
             height: 100%;
             width: 100%;
-            overflow: auto;
+            overflow: hidden;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            text-align: center;
             direction: rtl;
-            column-count: 2;
             column-gap: 40px;
+            column-fill: auto;
+            column-count: 1;
         }
 
-
+        .song-content {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            padding: 10px 0;
+        }
 
         #footer {
             background-color: #000000;
@@ -125,7 +129,7 @@
 
         #print-button {
             position: absolute;
-            top: 110px;
+            top: 20px;
             right: 20px;
             padding: 0.5rem 1rem;
             background-color: #000000;
@@ -137,6 +141,33 @@
 
         #print-button:hover {
             background-color: #333333;
+        }
+
+        @media print {
+            body {
+                margin: 0;
+                padding: 0;
+                width: 8.5in;
+                height: 11in;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+
+            #editor-container {
+                background-color: #ffffff !important;
+                box-shadow: none !important;
+            }
+
+            .page {
+                margin: 0;
+                box-shadow: none;
+            }
+
+            #print-button,
+            #navbar,
+            #footer {
+                display: none;
+            }
         }
     </style>
 </head>
@@ -158,34 +189,25 @@
             <div id="songs"></div>
         </div>
         <div id="editor-container">
-            <div id="editor"></div>
             <button id="print-button">Print</button>
+            <div class="page">
+                <div class="content" contenteditable="true"></div>
+            </div>
         </div>
     </div>
 
     <div id="footer">
-        <a href="https://drive.google.com/file/d/1X_aY7tb7E9RxKVyXDYkGAC_wMGznGJe6/view?usp=drive_link"
-            target="_blank">Download Niggun Sheet</a>
-        <a href="https://drive.google.com/file/d/1GrpBue_ukxtR7mKjuGZljXL_X-I7Y4wu/view?usp=drive_link"
-            target="_blank">Download Simcha Sheet</a>
+        <a href="https://drive.google.com/file/d/1X_aY7tb7E9RxKVyXDYkGAC_wMGznGJe6/view?usp=drive_link" target="_blank">Download Niggun Sheet</a>
+        <a href="https://drive.google.com/file/d/1GrpBue_ukxtR7mKjuGZljXL_X-I7Y4wu/view?usp=drive_link" target="_blank">Download Simcha Sheet</a>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.6/quill.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script>
         const songsEndpoint = "/api/songs";
         const songsContainer = document.getElementById("songs");
         const uploadInput = document.getElementById("upload");
-
-        function songContainerStyling() {
-            return `
-                padding: 20px;
-                background-color: green;
-                color: red;
-                border-radius: 10px;
-                box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
-                margin: 10px;
-            `;
-        }
+        const editorContainer = document.getElementById("editor-container");
+        const clearSheetButton = document.getElementById("clear-sheet");
 
         function getSheetSongsFromLocalStorage() {
             return JSON.parse(localStorage.getItem('sheetSongs')) || [];
@@ -197,25 +219,7 @@
             localStorage.setItem('sheetSongs', JSON.stringify(sheetSongs));
         }
 
-        const editor = new Quill('#editor', {
-            theme: 'snow',
-            readOnly: true, // Set the editor to read-only
-            modules: {
-                toolbar: false // Remove the toolbar
-            }
-        });
-
-        // Load the sheet songs from local storage into the editor
-        getSheetSongsFromLocalStorage().forEach(song => {
-            const newContent = `<h2>${song.title}</h2><p>${song.lyrics}</p><br><br>`;
-            editor.clipboard.dangerouslyPasteHTML(editor.getLength() - 1, newContent);
-        });
-
-
-
-        // populate the song list with the songs titles and artists
         function renderSongs(songs) {
-            console.log("rendering songs");
             const sheetSongs = getSheetSongsFromLocalStorage();
             songsContainer.innerHTML = "";
             songs.forEach(song => {
@@ -245,8 +249,6 @@
             addDragAndDropListeners();
         }
 
-        // Add drag and drop event listeners to the song items and the editor container
-        // to allow dragging and dropping songs into the editor
         function addDragAndDropListeners() {
             const songItems = document.querySelectorAll('.song-item');
             songItems.forEach(item => {
@@ -254,9 +256,11 @@
                 item.addEventListener('dragend', handleDragEnd);
             });
 
-            const editorContainer = document.querySelector('#editor-container');
-            editorContainer.addEventListener('dragover', handleDragOver);
-            editorContainer.addEventListener('drop', handleDrop);
+            const pages = document.querySelectorAll('.page .content');
+            pages.forEach(page => {
+                page.addEventListener('dragover', handleDragOver);
+                page.addEventListener('drop', handleDrop);
+            });
         }
 
         function handleDragStart(event) {
@@ -294,9 +298,8 @@
             // Add the new song to the sheet songs
             addSongToLocalStorageSheet(song);
 
-            // Append only the lyrics content with an empty line to the existing content
-            const newContent = `<h2>${song.title}</h2><p>${song.lyrics}</p><br><br>`;
-            editor.clipboard.dangerouslyPasteHTML(editor.getLength() - 1, newContent);
+            // Append the song content to the page, or add a new page if needed
+            addContentToPage(`<div class="song-content"><h2>${song.title}</h2><p>${song.lyrics}</p><br><br></div>`);
 
             // Update the song list to mark the song as used
             let songItem = document.querySelector(`.song-item[data-title="${song.title}"]`);
@@ -337,60 +340,60 @@
                 songsContainer.innerText = "Error loading songs.";
             });
 
-        // Print functionality
+        function addContentToPage(content) {
+            const lastPage = editorContainer.querySelector('.page:last-child .content');
+            lastPage.innerHTML += content;
+
+            // Check if the content overflows the page
+            if (lastPage.scrollHeight > lastPage.clientHeight) {
+                // Remove the last added content
+                lastPage.innerHTML = lastPage.innerHTML.slice(0, lastPage.innerHTML.lastIndexOf(content));
+
+                // Check if a new column is needed
+                if (lastPage.style.columnCount === '1' || !lastPage.style.columnCount) {
+                    lastPage.style.columnCount = '2';
+                } else {
+                    // Add a new page if a new column can't be added
+                    const newPage = document.createElement('div');
+                    newPage.classList.add('page');
+                    newPage.innerHTML = `<div class="content" contenteditable="true">${content}</div>`;
+                    editorContainer.appendChild(newPage);
+
+                    // Add drag and drop listeners to the new page
+                    const newContent = newPage.querySelector('.content');
+                    newContent.addEventListener('dragover', handleDragOver);
+                    newContent.addEventListener('drop', handleDrop);
+                }
+            }
+        }
+
+        // Print functionality using html2canvas
         document.getElementById('print-button').addEventListener('click', function () {
-            const printContents = document.getElementById('editor-container').innerHTML;
-            const originalContents = document.body.innerHTML;
-
-            const printStyles = `
-                <style>
-                    body {
-                        margin: 0;
-                        padding: 0;
-                        width: 8.5in;
-                        height: 11in;
-                        box-sizing: border-box;
-                        overflow: hidden;
-                    }
-                    #editor-container {
-                        background: url('/assets/sheetskin.jpg') no-repeat center center !important;
-                        background-size: cover !important;
-                    }
-                    #editor {
-                        height: 100%;
-                        width: 100%;
-                        padding: 60px;
-                        column-count: 2;
-                        column-gap: 40px;
-                    }
-                    #editor > * {
-                        break-inside: avoid-column;
-                    }
-                </style>
-            `;
-
-            const printWindow = window.open('', '', 'height=800,width=600');
-            printWindow.document.write('<html><head><title>Print</title>');
-            printWindow.document.write(printStyles);
-            printWindow.document.write('</head><body>');
-            printWindow.document.write(printContents);
-            printWindow.document.write('</body></html>');
-            printWindow.document.close();
-            printWindow.print();
+            html2canvas(editorContainer).then(canvas => {
+                const printWindow = window.open('', '', 'width=800,height=600');
+                printWindow.document.write('<html><head><title>Print</title></head><body>');
+                printWindow.document.write('<img src="' + canvas.toDataURL() + '" style="width: 100%;">');
+                printWindow.document.write('</body></html>');
+                printWindow.document.close();
+                printWindow.print();
+            });
         });
+
         function updateClearSheetButton() {
-            const clearSheetButton = document.getElementById("clear-sheet");
-            const sheetSongs = JSON.parse(localStorage.getItem("sheetSongs")) || [];
+            const sheetSongs = getSheetSongsFromLocalStorage();
             clearSheetButton.disabled = sheetSongs.length === 0;
         }
 
-        document.getElementById("clear-sheet").addEventListener("click", function () {
+        clearSheetButton.addEventListener("click", function () {
             if (confirm("Are you sure you want to clear the sheet?")) {
                 localStorage.removeItem("sheetSongs");
                 updateClearSheetButton();
                 renderSongs(songs);
                 alert("Sheet cleared.");
-                editor.setContents([]); // Clear the editor content
+                // Clear all pages except the first one
+                editorContainer.querySelectorAll('.page:not(:first-child)').forEach(page => page.remove());
+                // Clear the content of the first page
+                editorContainer.querySelector('.page .content').innerHTML = "";
             }
         });
 
